@@ -30,6 +30,25 @@ def health_check():
     }
 
 
+@app.get("/triage-config")
+def get_triage_config():
+    """Report the selected mode without revealing credentials or calling OpenAI."""
+    from app.ai_triage import TriageUnavailable, settings, triage_mode
+
+    try:
+        mode = triage_mode()
+    except TriageUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    key, model = settings()
+    return {
+        "mode": mode,
+        "model": model if mode == "openai" else None,
+        "configured": mode == "rules" or bool(key),
+        "requires_api_credit": mode == "openai",
+        "human_review_required": True,
+    }
+
+
 @app.post(
     "/properties",
     response_model=schemas.PropertyResponse,
@@ -340,13 +359,18 @@ def get_audit_logs(
 @app.post("/maintenance/{maintenance_id}/triage", response_model=schemas.TriageSuggestionResponse)
 def triage_maintenance(maintenance_id: int, db: Session = Depends(get_db)):
     from app.triage import suggest_triage
+    from app.ai_triage import TriageUnavailable
 
     maintenance = db.get(models.MaintenanceRequest, maintenance_id)
     if maintenance is None:
         raise HTTPException(status_code=404, detail="Maintenance request not found")
+    try:
+        result = suggest_triage(maintenance.issue)
+    except TriageUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
     suggestion = models.TriageSuggestion(
         maintenance_request_id=maintenance.id,
-        **suggest_triage(maintenance.issue),
+        **result,
     )
     db.add(suggestion)
     db.commit()

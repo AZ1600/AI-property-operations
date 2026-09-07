@@ -1,8 +1,19 @@
-"""Initial rules for review suggestions; this is not an AI model."""
+"""Choose explicit triage mode; local keyword rules are the default."""
 import re
 
 
 def suggest_triage(issue: str) -> dict[str, str]:
+    from app.ai_triage import TriageUnavailable, settings, suggest_ai_triage, triage_mode
+
+    if triage_mode() == "rules":
+        return suggest_rules_triage(issue)
+    key, model = settings()
+    if not key:
+        raise TriageUnavailable("OpenAI mode requires OPENAI_API_KEY. Set TRIAGE_MODE=rules to work offline.")
+    return suggest_ai_triage(issue, key, model)
+
+
+def suggest_rules_triage(issue: str) -> dict[str, str]:
     words = set(re.findall(r"[a-z]+", issue.lower()))
     if words & {"gas", "smoke", "fire", "sparks", "flood", "flooding"}:
         priority, trade, action = (
