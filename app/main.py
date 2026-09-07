@@ -336,3 +336,28 @@ def get_audit_logs(
     db: Session = Depends(get_db),
 ):
     return db.query(models.AuditLog).all()
+
+@app.post("/maintenance/{maintenance_id}/triage", response_model=schemas.TriageSuggestionResponse)
+def triage_maintenance(maintenance_id: int, db: Session = Depends(get_db)):
+    from app.triage import suggest_triage
+
+    maintenance = db.get(models.MaintenanceRequest, maintenance_id)
+    if maintenance is None:
+        raise HTTPException(status_code=404, detail="Maintenance request not found")
+    suggestion = models.TriageSuggestion(
+        maintenance_request_id=maintenance.id,
+        **suggest_triage(maintenance.issue),
+    )
+    db.add(suggestion)
+    db.commit()
+    db.refresh(suggestion)
+    return suggestion
+
+
+@app.get("/maintenance/{maintenance_id}/triage", response_model=list[schemas.TriageSuggestionResponse])
+def get_triage_suggestions(maintenance_id: int, db: Session = Depends(get_db)):
+    if db.get(models.MaintenanceRequest, maintenance_id) is None:
+        raise HTTPException(status_code=404, detail="Maintenance request not found")
+    return (db.query(models.TriageSuggestion)
+            .filter(models.TriageSuggestion.maintenance_request_id == maintenance_id)
+            .order_by(models.TriageSuggestion.id).all())

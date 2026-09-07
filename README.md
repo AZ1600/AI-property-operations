@@ -1,6 +1,6 @@
 # PropertyOps AI Agent
 
-A FastAPI backend for managing properties, maintenance requests, and human approval decisions. AI triage is planned; it is not implemented yet.
+A FastAPI backend for managing properties, maintenance requests, and human approval decisions. Initial triage suggestions use keyword rules; an AI model is not connected yet.
 
 ## Run locally
 
@@ -25,6 +25,14 @@ Both decisions update the linked maintenance request and create an audit event i
 
 The API is currently a local development prototype without authentication. The audit actor is currently the fixed value `human`.
 
-## Next milestone
+## Maintenance triage
 
-Add maintenance triage suggestions (priority, trade, and recommended next step) for human review, while retaining the approval workflow.
+Call `POST /maintenance/{maintenance_id}/triage` to save a suggestion, then `GET /maintenance/{maintenance_id}/triage` to view its history. Each POST saves a new suggestion. Unknown maintenance IDs return 404.
+
+Suggestions include priority, trade, recommended action, rationale, and source (`rules-v1`). They do not change the request's priority or status, create an approval, or dispatch work. Keyword rules cannot understand negation or reliably assess safety; all suggestions require human review.
+
+Restart the app after updating to create the new suggestions table. Existing tables do not require changes.
+
+Run tests using `python -m unittest discover -s tests -v` in your virtual environment.
+
+The next milestone is connecting an AI model for richer suggestions while retaining human review.

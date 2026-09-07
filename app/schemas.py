@@ -60,3 +60,15 @@ class AuditLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class TriageSuggestionResponse(BaseModel):
+    id: int
+    maintenance_request_id: int
+    suggested_priority: str
+    suggested_trade: str
+    recommended_action: str
+    rationale: str
+    source: str
+
+    class Config:
+        from_attributes = True
