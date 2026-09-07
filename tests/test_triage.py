@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -7,7 +8,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.database import Base
 from app.main import triage_maintenance, get_triage_suggestions, reject_request
-from app.triage import suggest_triage
+from app.triage import suggest_rules_triage
 
 
 class TriageTests(unittest.TestCase):
@@ -16,9 +17,11 @@ class TriageTests(unittest.TestCase):
                              ('Socket broken', 'electrician'), ('Flooding near boiler', 'urgent assessment'),
                              ('Unknown problem', 'general maintenance'), ('Fireplace paint chipped', 'general maintenance')]:
             with self.subTest(issue=issue):
-                self.assertEqual(suggest_triage(issue)['suggested_trade'], trade)
+                self.assertEqual(suggest_rules_triage(issue)['suggested_trade'], trade)
 
-    def test_saved_suggestions_preserve_decision_workflow(self):
+    @patch('app.ai_triage.settings', return_value=('', 'gpt-5-mini'))
+    @patch('app.ai_triage.triage_mode', return_value='rules')
+    def test_saved_suggestions_preserve_decision_workflow(self, _mode, _settings):
         engine = create_engine('sqlite://')
         Base.metadata.create_all(engine)
         with Session(engine) as db:
