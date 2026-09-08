@@ -13,6 +13,19 @@ python -m uvicorn app.main:app --reload
 
 Open http://127.0.0.1:8000/docs for the interactive API. The app creates a local `propertyops.db` SQLite database in the directory where it is started. Existing data is not included in this repository.
 
+## Dashboard
+
+Open http://127.0.0.1:8000/ for the operations dashboard. It runs inside the existing FastAPI server with no separate frontend build or installation.
+
+- **Maintenance:** create requests, search and filter the queue, open details, generate triage suggestions and request approval.
+- **Properties:** add properties and see pending maintenance counts.
+- **Approvals:** review requests, approve or reject proposed work and see decision status.
+- **Audit history:** inspect the approval and rejection events recorded by the backend.
+
+The summary shows portfolio counts and the selected triage mode. Forms save to the existing API and SQLite database. Refresh reloads records from the server. Empty workspaces show setup actions instead of sample records. Requests and decisions are never sent until you submit their form or click the relevant action.
+
+Start the server from the project folder whose `propertyops.db` you want to use. Different checkouts have separate local databases. The dashboard shares the API's current local-development limitation: it has no sign-in or user permissions. Keep the server bound to `127.0.0.1`.
+
 ## Current workflow
 
 1. Create a property with `POST /properties`.
