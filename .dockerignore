@@ -1,0 +1,10 @@
+.venv/
+.env
+propertyops.db
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
+.github/
+tests/
+.DS_Store
