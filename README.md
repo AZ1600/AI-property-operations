@@ -1,45 +1,47 @@
 # PropertyOps AI Agent
 
-PropertyOps is an Azure-hosted property operations platform for managing properties, maintenance requests, human-reviewed triage, approval decisions, and audit history.
+![CI/CD](https://github.com/AZ1600/AI-property-operations/actions/workflows/deploy.yml/badge.svg)
 
-The application combines a FastAPI backend with an operations dashboard and a controlled decision workflow. Local rules-based triage is available by default, while OpenAI-assisted suggestions can be enabled explicitly.
+PropertyOps is an Azure-hosted property operations platform for managing properties, maintenance requests, structured triage, human approval decisions, and audit history.
 
-The Azure deployment adds containerized compute, persistent PostgreSQL storage, managed identity, Key Vault-backed secrets, restricted database access, and end-to-end application telemetry.
+The project combines a FastAPI backend, browser-based operations workspace, PostgreSQL persistence, Microsoft Entra ID authentication, application-role authorization, managed identities, Azure Key Vault, observability, GitHub Actions CI/CD with Azure OIDC, and Infrastructure as Code with Bicep.
 
 > **Deployment status:** Validated on Microsoft Azure  
-> **Decision boundary:** Human approval remains required. Triage suggestions never approve or dispatch maintenance work.
+> **Authentication:** Microsoft Entra ID  
+> **Authorization:** `PropertyOps.User` and `PropertyOps.Manager`  
+> **Decision boundary:** Triage can recommend actions, but approval and rejection remain human decisions.
 
 ---
 
 ## Project Overview
 
-The overview below summarizes the operations workspace, Azure architecture, maintenance workflow, and platform safety controls.
-
 ![PropertyOps project overview](docs/propertyops-project-overview.png)
 
----
+PropertyOps was built as a cloud engineering and platform engineering portfolio project rather than only as an application demo.
 
-## Problem It Solves
+It demonstrates the lifecycle of a small production-style service:
 
-Property maintenance workflows can become fragmented across messages, spreadsheets, property records, contractor conversations, and informal approval decisions.
+```text
+Application
+    ↓
+Containerization
+    ↓
+Azure deployment
+    ↓
+Managed database
+    ↓
+Identity + RBAC
+    ↓
+Secret management
+    ↓
+Observability
+    ↓
+CI/CD
+    ↓
+Infrastructure as Code
+```
 
-PropertyOps brings those steps into one reviewable workflow:
-
-- Register managed properties
-- Submit maintenance issues
-- Generate structured triage suggestions
-- Preserve human approval and rejection decisions
-- Keep maintenance state synchronized with decisions
-- Record approval events in an audit history
-- Monitor API requests, latency, and failures
-
-The objective is not to automate away operational judgment.
-
-PropertyOps uses automation to organize recommendations while keeping consequential decisions with a human reviewer.
-
----
-
-## Core Workflow
+The application models a property maintenance workflow:
 
 ```text
 Property
@@ -50,33 +52,53 @@ Triage suggestion
    ↓
 Human review
    ↓
-Approval or rejection
+Approve / Reject
    ↓
 Maintenance state update
    ↓
-Audit history
+Audit event
 ```
 
-Triage and approval are intentionally separate.
+---
 
-A suggestion can recommend a priority, trade, or next action, but it cannot approve work, dispatch a contractor, or independently change the maintenance decision.
+## Key Capabilities
+
+- Property and maintenance-request management
+- Searchable browser operations dashboard
+- Deterministic rules-based triage
+- Optional OpenAI-assisted triage
+- Human approval and rejection workflow
+- Audit history linked to authenticated users
+- Microsoft Entra ID authentication
+- Role-based application authorization
+- PostgreSQL cloud persistence
+- Azure Key Vault secret references
+- User-assigned managed identities
+- Least-privilege Azure RBAC
+- Application Insights telemetry
+- Log Analytics / KQL investigation
+- Docker containerization
+- GitHub Actions CI/CD
+- Passwordless Azure deployment using GitHub OIDC
+- Modular Bicep Infrastructure as Code
 
 ---
 
 ## Operations Workspace
 
-![PropertyOps maintenance workspace](docs/screenshots/maintenance-dashboard.png)
+![PropertyOps maintenance dashboard](docs/screenshots/maintenance-dashboard.png)
 
-The dashboard provides four operational views:
+The browser workspace provides operational views for:
 
-| Area | Responsibility |
+| Area | Purpose |
 | --- | --- |
-| Maintenance | Create, search, filter, triage, and review maintenance requests |
-| Properties | Register properties and view maintenance workload |
+| Maintenance | Create, search, triage, and review maintenance requests |
+| Properties | Register properties and inspect maintenance workload |
 | Approvals | Review proposed work and explicitly approve or reject it |
-| Audit history | Inspect recorded approval and rejection decisions |
+| Audit history | Inspect recorded human decisions |
+| Triage status | Show whether deterministic rules or optional AI assistance is configured |
 
-The workspace also displays the selected triage mode so an operator can see whether suggestions are coming from deterministic rules or the optional AI integration.
+The dashboard is served directly by FastAPI, so the project does not require a separate frontend deployment.
 
 ---
 
@@ -84,188 +106,133 @@ The workspace also displays the selected triage mode so an operator can see whet
 
 ```mermaid
 flowchart TB
-    USER["Operator / Browser"]
+    USER["Authenticated Operator"]
 
     subgraph Azure["Microsoft Azure"]
         ACA["Azure Container Apps<br/>FastAPI + Dashboard"]
         ACR["Azure Container Registry"]
         PG["Azure Database for PostgreSQL<br/>Flexible Server"]
         KV["Azure Key Vault"]
-        APPINSIGHTS["Application Insights"]
+        AI["Application Insights"]
         LAW["Log Analytics Workspace"]
 
         ACR --> ACA
         ACA --> PG
-        ACA --> APPINSIGHTS
-        APPINSIGHTS --> LAW
         KV --> ACA
+        ACA --> AI
+        AI --> LAW
     end
 
-    subgraph Identity["Managed Identity + RBAC"]
-        ACRID["ACR Pull Identity"]
-        RUNTIMEID["PropertyOps Runtime Identity"]
+    subgraph Identity["Identity + Authorization"]
+        ENTRA["Microsoft Entra ID"]
+        RUNTIME["Runtime Managed Identity"]
+        ACRID["ACR Pull Managed Identity"]
     end
 
-    USER -->|HTTPS| ACA
+    USER --> ENTRA
+    ENTRA --> ACA
 
-    ACRID -->|AcrPull| ACR
-    RUNTIMEID -->|Key Vault Secrets User| KV
+    ACRID -->|"AcrPull"| ACR
+    RUNTIME -->|"Key Vault Secrets User"| KV
 
-    subgraph OptionalAI["Optional AI Assistance"]
-        OPENAI["OpenAI Responses API"]
+    subgraph Delivery["CI/CD"]
+        GH["GitHub Actions"]
+        OIDC["Azure OIDC Federated Identity"]
     end
 
-    ACA -. "TRIAGE_MODE=openai" .-> OPENAI
+    GH --> OIDC
+    OIDC -->|"AcrPush"| ACR
+    OIDC -->|"Container Apps Contributor"| ACA
+
+    subgraph IaC["Infrastructure as Code"]
+        BICEP["Bicep Modules"]
+    end
+
+    BICEP --> ACR
+    BICEP --> KV
+    BICEP --> PG
+    BICEP --> ACA
+    BICEP --> AI
+    BICEP --> LAW
 ```
 
-### Azure Components
+---
 
-| Service | Role |
+## Azure Platform
+
+![Azure platform resources](docs/screenshots/azure-platform-resources.png)
+
+The deployed platform uses:
+
+| Azure service | Responsibility |
 | --- | --- |
-| Azure Container Apps | Runs the containerized FastAPI application and dashboard |
-| Azure Container Registry | Stores versioned application container images |
-| Azure Database for PostgreSQL | Provides persistent application data |
-| Azure Key Vault | Stores the PostgreSQL connection secret outside the application image and repository |
-| Managed Identity | Allows Azure resources to authenticate without application passwords |
-| Azure RBAC | Restricts ACR and Key Vault permissions to the required identities |
-| Application Insights | Captures request telemetry, latency, result codes, and failures |
-| Log Analytics | Provides KQL-based investigation of application telemetry |
+| Azure Container Apps | Hosts the FastAPI application and dashboard |
+| Azure Container Registry | Stores versioned Linux AMD64 container images |
+| Azure Database for PostgreSQL | Provides persistent application storage |
+| Azure Key Vault | Stores application secrets outside source control |
+| Microsoft Entra ID | Authenticates application users |
+| Managed Identity | Provides passwordless Azure resource authentication |
+| Azure RBAC | Restricts identities to required resource actions |
+| Application Insights | Captures application request telemetry |
+| Log Analytics | Supports operational investigation with KQL |
 
 ---
 
-## Persistence
+## Authentication and Authorization
 
-PropertyOps supports two database modes.
+PropertyOps uses Microsoft Entra ID for authentication in Azure.
 
-### Local Development
+The Azure authentication layer supplies the authenticated principal to the application. FastAPI reads that principal and extracts the user's claims and application roles.
 
-```text
-FastAPI
-   ↓
-SQLite
-   ↓
-propertyops.db
-```
-
-If `DATABASE_URL` is not configured, the application uses the local SQLite database.
-
-### Azure Deployment
+Two application roles are used:
 
 ```text
-Azure Container Apps
-   ↓
-DATABASE_URL
-   ↓
-Key Vault secret reference
-   ↓
-Azure Database for PostgreSQL
+PropertyOps.User
+PropertyOps.Manager
 ```
 
-The Azure deployment uses PostgreSQL so application data survives container restarts, replica replacement, and scale events.
+### `PropertyOps.User`
 
-Persistence was validated by:
+Authenticated users can:
 
-1. Creating property data
-2. Restarting the active Azure Container Apps revision
-3. Querying the application again
-4. Confirming the stored property remained available
+- View properties
+- Create properties
+- View maintenance requests
+- Submit maintenance requests
+- Generate triage suggestions
+- Create approval requests
+- View approvals
+- View audit history
 
----
+### `PropertyOps.Manager`
 
-## Managed Identity and Secret Management
+Managers inherit normal user access and can additionally:
 
-The deployed application does not embed the PostgreSQL credential in the container image or source repository.
+- Approve maintenance work
+- Reject maintenance work
+
+The application exposes:
 
 ```text
-PropertyOps
-   ↓
-Runtime Managed Identity
-   ↓
-Azure Key Vault
-   ↓
-database-url
-   ↓
-PostgreSQL
+GET /me
 ```
 
-The runtime identity has the:
+which returns the authenticated actor and application roles without exposing credentials.
 
-```text
-Key Vault Secrets User
+![Microsoft Entra role authentication](docs/screenshots/entra-role-authentication.png)
+
+Example shape:
+
+```json
+{
+  "actor": "authenticated-user",
+  "roles": [
+    "PropertyOps.Manager"
+  ]
+}
 ```
 
-role.
-
-A separate managed identity has:
-
-```text
-AcrPull
-```
-
-permission for retrieving application images from Azure Container Registry.
-
-This separates application runtime access from registry access and follows least-privilege RBAC principles.
-
----
-
-## Database Network Access
-
-The PostgreSQL server does not rely on the broad Azure-wide service firewall rule used during initial setup.
-
-The deployment was hardened by allowing the current Container Apps outbound IP directly and removing the broad:
-
-```text
-Allow Azure services and resources to access this server
-```
-
-rule.
-
-Database connectivity was then validated through the live `/properties` API endpoint.
-
-> The current Container Apps Consumption egress IP is suitable for lab validation but is not intended as a permanent production networking design. A production version would use private networking and stable egress.
-
----
-
-## Maintenance Triage
-
-PropertyOps supports two triage modes.
-
-### Rules Mode
-
-```dotenv
-TRIAGE_MODE=rules
-```
-
-Rules mode is the default and requires no external AI API.
-
-It produces structured suggestions using deterministic local logic.
-
-### OpenAI Mode
-
-```dotenv
-TRIAGE_MODE=openai
-OPENAI_API_KEY=
-OPENAI_MODEL=
-```
-
-OpenAI mode is explicitly enabled.
-
-Suggestions can include:
-
-- Priority
-- Recommended trade
-- Recommended action
-- Rationale
-- Suggestion source
-
-AI responses remain recommendations only.
-
-They do not automatically:
-
-- Approve work
-- Change maintenance status
-- Create an approval decision
-- Dispatch contractors
+The screenshot used in the repository should redact personally identifying account information before publication.
 
 ---
 
@@ -273,9 +240,11 @@ They do not automatically:
 
 ![PropertyOps approval review](docs/screenshots/approval-review.png)
 
-The approval workflow remains independent of triage.
+Triage and approval are intentionally separate.
 
 ```text
+Maintenance issue
+       ↓
 Triage suggestion
        ↓
 Human reviewer
@@ -286,12 +255,34 @@ Approve    Reject
  ↓           ↓
 Maintenance state
        ↓
-Audit event
+Audit history
 ```
 
-Approval and rejection update the linked maintenance request and create an audit event in the same database transaction.
+A triage suggestion may recommend:
 
-Duplicate pending approvals and repeated decisions return HTTP `409`.
+- Priority
+- Recommended trade
+- Recommended action
+- Rationale
+
+It cannot independently:
+
+- Approve work
+- Reject work
+- Dispatch a contractor
+- Change the final maintenance decision
+
+Approval and rejection require the:
+
+```text
+PropertyOps.Manager
+```
+
+role.
+
+Duplicate pending approval requests and repeated decisions return HTTP `409`.
+
+This maintains a clear human decision boundary even when AI-assisted triage is enabled.
 
 ---
 
@@ -299,21 +290,299 @@ Duplicate pending approvals and repeated decisions return HTTP `409`.
 
 ![PropertyOps audit history](docs/screenshots/audit-history.png)
 
-PropertyOps preserves approval decisions separately from triage suggestions.
+Approval and rejection decisions are recorded independently from triage suggestions.
 
-This makes it possible to distinguish:
+Each decision records information such as:
+
+```text
+Action
+Resource
+Previous status
+New status
+Authenticated actor
+```
+
+This preserves a clear distinction between:
 
 ```text
 what the system suggested
-        from
-what the human decided
 ```
 
-That separation is central to the application's operational safety model.
+and:
+
+```text
+what the authenticated human decided
+```
+
+Manager approval and rejection use the authenticated Microsoft Entra actor instead of a hard-coded application username.
+
+This gives the workflow an auditable link between identity, authorization, and consequential actions.
+
+---
+
+## Triage Modes
+
+PropertyOps supports two triage modes.
+
+### Rules mode
+
+Rules mode is the default:
+
+```dotenv
+TRIAGE_MODE=rules
+```
+
+It uses deterministic local logic and requires no external AI API.
+
+### OpenAI mode
+
+Optional AI-assisted triage can be enabled explicitly:
+
+```dotenv
+TRIAGE_MODE=openai
+OPENAI_API_KEY=
+OPENAI_MODEL=
+```
+
+AI-assisted triage can produce structured suggestions including:
+
+- Priority
+- Recommended trade
+- Recommended action
+- Rationale
+- Suggestion source
+
+AI remains advisory.
+
+It cannot independently approve work or change the final maintenance decision.
+
+If OpenAI mode is selected but unavailable or misconfigured, the application returns an error rather than silently switching to rules mode.
+
+Use:
+
+```text
+GET /triage-config
+```
+
+to inspect the selected mode without revealing credentials or making an AI request.
+
+---
+
+## Persistence
+
+PropertyOps supports separate local and Azure persistence models.
+
+### Local development
+
+Without `DATABASE_URL`, the application uses SQLite:
+
+```text
+FastAPI
+   ↓
+SQLite
+   ↓
+propertyops.db
+```
+
+### Azure deployment
+
+The Azure deployment uses PostgreSQL:
+
+```text
+Azure Container Apps
+       ↓
+DATABASE_URL
+       ↓
+Container App secret reference
+       ↓
+Azure Key Vault
+       ↓
+PostgreSQL
+```
+
+PostgreSQL persistence was validated across Container Apps revision replacement and restart.
+
+Application records remain available independently of an individual container instance.
+
+---
+
+## Managed Identity and Secret Management
+
+Application credentials are not embedded in the Docker image or committed to Git.
+
+The database secret path is:
+
+```text
+PropertyOps Container App
+        ↓
+Runtime Managed Identity
+        ↓
+Key Vault Secrets User
+        ↓
+Azure Key Vault
+        ↓
+database-url
+```
+
+A separate identity handles container image retrieval:
+
+```text
+Container App
+     ↓
+ACR Pull Identity
+     ↓
+AcrPull
+     ↓
+Azure Container Registry
+```
+
+Separating runtime access from registry access reduces the permissions available to each identity.
+
+---
+
+## Azure RBAC
+
+The platform uses resource-scoped Azure RBAC relationships.
+
+```text
+id-propertyops-acr-pull
+    └── AcrPull
+        └── Azure Container Registry
+
+id-propertyops-runtime
+    └── Key Vault Secrets User
+        └── Azure Key Vault
+
+GitHub Actions OIDC principal
+    ├── AcrPush
+    │   └── Azure Container Registry
+    │
+    └── Container Apps Contributor
+        └── PropertyOps Container App
+```
+
+These role assignments are represented in Bicep.
+
+Existing role-assignment resource IDs were preserved during IaC adoption so Azure could manage the existing assignments rather than creating duplicate relationships.
+
+---
+
+## GitHub Actions CI/CD
+
+![GitHub Actions Azure OIDC deployment](docs/screenshots/github-actions-oidc-deployment.png)
+
+The repository contains an automated test-and-deploy workflow.
+
+### Pull requests
+
+For pull requests targeting `main`:
+
+```text
+Checkout
+   ↓
+Python 3.11 setup
+   ↓
+Install dependencies
+   ↓
+Run pytest
+```
+
+Deployment does not run for pull-request events.
+
+### Main branch
+
+After code is merged to `main`:
+
+```text
+Tests
+  ↓
+GitHub OIDC token
+  ↓
+Azure login
+  ↓
+ACR login
+  ↓
+Build Linux AMD64 image
+  ↓
+Push commit-SHA image
+  ↓
+Deploy to Azure Container Apps
+```
+
+Azure authentication uses GitHub workload identity federation instead of storing a long-lived Azure client secret in GitHub.
+
+The workflow receives only the GitHub permissions required to:
+
+```text
+read repository contents
+request an OIDC identity token
+```
+
+Container images are tagged using the Git commit SHA, providing an immutable link between deployed application code and repository history.
+
+---
+
+## Infrastructure as Code
+
+Azure infrastructure is represented with modular Bicep.
+
+```text
+infra/
+├── main.bicep
+└── modules/
+    ├── acr.bicep
+    ├── container-app.bicep
+    ├── container-environment.bicep
+    ├── identities.bicep
+    ├── key-vault.bicep
+    ├── monitoring.bicep
+    ├── postgres.bicep
+    └── rbac.bicep
+```
+
+The IaC migration was performed incrementally against existing Azure resources.
+
+Each infrastructure slice followed the same workflow:
+
+```text
+Inspect live Azure configuration
+        ↓
+Represent configuration in Bicep
+        ↓
+az bicep build
+        ↓
+Azure what-if
+        ↓
+Review resource changes
+        ↓
+Deploy
+        ↓
+Verify live configuration
+        ↓
+Pull request
+```
+
+This approach allowed existing resources to be brought under Infrastructure as Code without blindly deleting and recreating them.
+
+Managed infrastructure includes:
+
+- Azure Container Registry
+- User-assigned managed identities
+- Log Analytics Workspace
+- Application Insights
+- Container Apps Environment
+- Azure Key Vault
+- PostgreSQL Flexible Server
+- PostgreSQL application database
+- PostgreSQL firewall rule
+- Azure Container App configuration
+- Azure RBAC role assignments
 
 ---
 
 ## Observability
+
+![Azure Monitor request telemetry](docs/screenshots/azure-monitor-requests.png)
 
 PropertyOps uses Azure Monitor OpenTelemetry instrumentation.
 
@@ -331,16 +600,15 @@ KQL investigation
 
 Telemetry has been validated for:
 
-- Successful `/health` requests
-- PostgreSQL-backed `/properties` requests
+- Successful requests
+- Failed requests
 - HTTP result codes
 - Request latency
-- Successful requests
-- Failed requests such as HTTP `404`
+- `/health`
+- PostgreSQL-backed API requests
+- Deliberate HTTP `404` failures
 
-![PropertyOps request telemetry](docs/screenshots/azure-monitor-requests.png)
-
-Example KQL query:
+Example KQL:
 
 ```kusto
 AppRequests
@@ -349,83 +617,87 @@ AppRequests
 | order by TimeGenerated desc
 ```
 
-Example successful telemetry:
+Example successful requests:
 
 ```text
-GET /health       200    Success=True
-GET /properties   200    Success=True
+GET /health       200
+GET /properties   200
 ```
 
-Failure telemetry was also validated using a deliberately invalid route:
+A deliberately invalid route can be used to validate failure telemetry:
 
 ```text
-GET /does-not-exist   404   Success=False
+GET /does-not-exist
+→ 404
+→ Success=False
 ```
 
-This provides a practical troubleshooting path from a user request to measurable application behaviour.
+This provides a practical investigation path from an application request to Azure telemetry.
 
 ---
 
 ## API Workflow
 
-1. Create a property with `POST /properties`
-2. Submit an issue with `POST /maintenance`
-3. Generate triage with `POST /maintenance/{maintenance_id}/triage`
-4. Request review with `POST /approvals`
-5. Approve or reject using the approval decision endpoints
-6. Inspect maintenance state and audit history
-
-Useful read endpoints include:
+A typical workflow is:
 
 ```text
-GET /health
-GET /properties
-GET /maintenance
-GET /maintenance/{maintenance_id}/triage
+POST /properties
+        ↓
+POST /maintenance
+        ↓
+POST /maintenance/{id}/triage
+        ↓
+POST /approvals
+        ↓
+POST /approvals/{id}/approve
+        or
+POST /approvals/{id}/reject
+        ↓
 GET /audit-logs
-GET /triage-config
 ```
 
----
+Useful endpoints include:
 
-## Dashboard
+```text
+GET  /health
+GET  /me
+GET  /triage-config
 
-The dashboard runs inside the FastAPI application with no separate frontend build.
+GET  /properties
+POST /properties
 
-Main areas include:
+GET  /maintenance
+POST /maintenance
 
-### Maintenance
+POST /maintenance/{id}/triage
+GET  /maintenance/{id}/triage
 
-Create requests, search and filter the queue, inspect request details, generate triage suggestions, and request approval.
+GET  /approvals
+POST /approvals
 
-### Properties
+POST /approvals/{id}/approve
+POST /approvals/{id}/reject
 
-Create managed properties and view associated maintenance activity.
-
-### Approvals
-
-Review requests and explicitly approve or reject proposed work.
-
-### Audit History
-
-Inspect recorded approval and rejection events.
+GET  /audit-logs
+```
 
 ---
 
 ## Containerization
 
-PropertyOps includes a Dockerfile using Python 3.11.
+PropertyOps uses Python 3.11 and runs as a Docker container.
 
-The container:
+The image:
 
 - Installs dependencies from `requirements.txt`
-- Copies only required application code
-- Runs as a non-root `appuser`
+- Copies required application code
+- Runs as a non-root user
 - Exposes port `8000`
 - Starts FastAPI through Uvicorn
-- Defaults to rules-based triage
-- Supports PostgreSQL through `DATABASE_URL`
+- Supports SQLite locally
+- Supports PostgreSQL using `DATABASE_URL`
 - Supports Application Insights through environment configuration
+- Defaults to deterministic rules-based triage
 
 Build locally:
 
@@ -435,7 +707,7 @@ docker build \
   .
 ```
 
-Run locally:
+Run:
 
 ```bash
 docker run --rm \
@@ -459,22 +731,13 @@ Expected response:
 }
 ```
 
----
+Azure images are built for:
 
-## Azure Container Image
-
-Azure deployment images are built for Linux AMD64:
-
-```bash
-docker build \
-  --platform linux/amd64 \
-  -t propertyops-ai-agent:azure \
-  .
+```text
+linux/amd64
 ```
 
-The image is stored in Azure Container Registry and deployed to Azure Container Apps.
-
-The deployment has been validated using multiple versioned images during development.
+before being pushed to Azure Container Registry.
 
 ---
 
@@ -511,7 +774,7 @@ Dashboard: http://127.0.0.1:8000/
 API docs:  http://127.0.0.1:8000/docs
 ```
 
-Local development uses SQLite unless `DATABASE_URL` is supplied.
+Local development uses SQLite unless `DATABASE_URL` is configured.
 
 ---
 
@@ -520,178 +783,280 @@ Local development uses SQLite unless `DATABASE_URL` is supplied.
 | Variable | Purpose |
 | --- | --- |
 | `TRIAGE_MODE` | Selects `rules` or `openai` |
-| `DATABASE_URL` | Selects PostgreSQL instead of local SQLite |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Enables Azure Monitor OpenTelemetry export |
-| `OPENAI_API_KEY` | Authenticates OpenAI requests when OpenAI mode is selected |
-| `OPENAI_MODEL` | Selects the configured model for AI-assisted triage |
+| `DATABASE_URL` | Enables PostgreSQL instead of local SQLite |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Enables Azure Monitor telemetry |
+| `OPENAI_API_KEY` | Authenticates optional OpenAI triage |
+| `OPENAI_MODEL` | Selects the model used for AI-assisted triage |
 
-Environment secrets must not be committed to Git.
+Secrets must not be committed to Git.
 
-The root `.env` file is intended for local development only and is ignored by Git.
-
----
-
-## Work Without API Credit
-
-Triage defaults to `rules`, even if an API key exists.
-
-To make the configuration explicit:
-
-```dotenv
-TRIAGE_MODE=rules
-```
-
-Rules mode makes no model requests.
-
-Use:
-
-```text
-GET /triage-config
-```
-
-to inspect the configured mode.
-
-The endpoint reveals no credentials and does not contact OpenAI.
+Local `.env` files are ignored by the repository.
 
 ---
 
-## Enable AI Assistance
+## Testing
 
-If starting fresh, copy `.env.example` to a file named `.env` in the project root.
-
-Do not commit `.env`.
-
-Example:
-
-```dotenv
-TRIAGE_MODE=openai
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-5-mini
-```
-
-OpenAI mode sends the maintenance issue text to the Responses API using structured output.
-
-Saved suggestions identify their source as:
-
-```text
-openai:<model>
-```
-
-Missing keys, invalid modes, API errors, or refusals return HTTP `503` without silently falling back to rules mode.
-
-Human approval remains separate from AI triage.
-
----
-
-## Validation
-
-Run the test suite:
+Run the complete test suite with:
 
 ```bash
-python -m unittest discover -s tests -v
+python -m pytest -q
 ```
 
-Current validation:
+The test suite covers areas including:
+
+- Deterministic triage
+- AI triage behaviour
+- Dashboard delivery
+- Property workflows
+- Maintenance workflows
+- Approval behaviour
+- Audit behaviour
+- Failure handling
+
+GitHub Actions runs the test suite before deployment to Azure.
+
+---
+
+## Repository Structure
 
 ```text
-12 tests passed
-
-Docker image build validated
-Linux AMD64 image validated
-Azure Container Registry push validated
-Azure Container Apps deployment validated
-PostgreSQL persistence validated across revision restart
-Restricted PostgreSQL firewall access validated
-Managed Identity access validated
-Azure Key Vault secret reference validated
-Application Insights request telemetry validated
-HTTP 404 failure telemetry validated
+AI-property-operations/
+├── .github/
+│   └── workflows/
+│       └── deploy.yml
+│
+├── app/
+│   ├── ai_triage.py
+│   ├── auth.py
+│   ├── database.py
+│   ├── main.py
+│   ├── models.py
+│   ├── schemas.py
+│   ├── triage.py
+│   └── static/
+│
+├── docs/
+│   ├── propertyops-project-overview.png
+│   └── screenshots/
+│       ├── approval-review.png
+│       ├── audit-history.png
+│       ├── azure-monitor-requests.png
+│       ├── azure-platform-resources.png
+│       ├── entra-role-authentication.png
+│       ├── github-actions-oidc-deployment.png
+│       └── maintenance-dashboard.png
+│
+├── infra/
+│   ├── main.bicep
+│   └── modules/
+│       ├── acr.bicep
+│       ├── container-app.bicep
+│       ├── container-environment.bicep
+│       ├── identities.bicep
+│       ├── key-vault.bicep
+│       ├── monitoring.bicep
+│       ├── postgres.bicep
+│       └── rbac.bicep
+│
+├── tests/
+├── Dockerfile
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
-## Deployment Evidence
+## Portfolio Evidence
 
-![Azure platform resources](docs/screenshots/azure-platform-resources.png)
+The repository includes targeted evidence for the main application and cloud-engineering capabilities.
 
-The Azure implementation demonstrates:
+### Application and workflow
 
-```text
-Containerized application delivery
-Persistent managed database
-Managed identities
-Azure RBAC
-Centralized secret storage
-Restricted database network access
-Application telemetry
-KQL-based troubleshooting
-```
-
----
-
-## Recommended Screenshot Set
-
-The repository documentation is designed around the following evidence:
+#### Project architecture
 
 ```text
-docs/
-├── propertyops-project-overview.png
-└── screenshots/
-    ├── maintenance-dashboard.png
-    ├── approval-review.png
-    ├── audit-history.png
-    ├── azure-monitor-requests.png
-    └── azure-platform-resources.png
+docs/propertyops-project-overview.png
 ```
 
-### Project Overview
+Shows the application workflow and Azure architecture.
 
-A single architecture and workflow graphic showing:
+#### Operations workspace
 
 ```text
-Operations Workspace
-Azure Architecture
-Maintenance Workflow
-Safety & Platform Controls
+docs/screenshots/maintenance-dashboard.png
 ```
 
-### Maintenance Dashboard
+Shows the primary PropertyOps dashboard.
 
-Shows the primary PropertyOps operations workspace.
+#### Human approval
 
-### Approval Review
+```text
+docs/screenshots/approval-review.png
+```
 
-Shows the human decision boundary.
+Shows the explicit human approval boundary.
 
-### Audit History
+#### Audit history
 
-Shows recorded approval and rejection events.
+```text
+docs/screenshots/audit-history.png
+```
 
-### Azure Monitor Requests
+Shows persisted approval and rejection events.
 
-Shows successful and failed API telemetry captured through Application Insights and Log Analytics.
+### Azure platform
 
-### Azure Platform Resources
+#### Azure resources
+
+```text
+docs/screenshots/azure-platform-resources.png
+```
 
 Shows the main Azure services supporting the deployment.
 
+#### Microsoft Entra authentication
+
+```text
+docs/screenshots/entra-role-authentication.png
+```
+
+Shows authenticated application roles.
+
+#### GitHub Actions OIDC
+
+```text
+docs/screenshots/github-actions-oidc-deployment.png
+```
+
+Shows automated Azure deployment without a long-lived CI/CD Azure password.
+
+#### Azure Monitor
+
+```text
+docs/screenshots/azure-monitor-requests.png
+```
+
+Shows request telemetry captured through Application Insights and Log Analytics.
+
 ---
 
-## Current Security Boundary
+## Security and Platform Controls
 
-PropertyOps is an engineering and portfolio project, not a production property-management service.
+The deployed project includes:
 
-Current limitations include:
+```text
+✓ Microsoft Entra ID authentication
+✓ Application-role authorization
+✓ Manager-only approval and rejection
+✓ Authenticated audit actors
+✓ User-assigned managed identities
+✓ Resource-scoped Azure RBAC
+✓ Key Vault-backed database secret
+✓ GitHub Actions OIDC
+✓ No long-lived Azure CI/CD client secret
+✓ Restricted PostgreSQL firewall access
+✓ Application telemetry
+✓ Infrastructure as Code
+```
 
-- Application-level user authentication has not yet been added
-- The audit actor is currently represented as `human`
-- Optional AI triage depends on external model availability and configuration
-- Rules-based triage cannot reliably understand every safety or contextual nuance
-- The current Container Apps Consumption egress design is suitable for lab validation but is not the final production network architecture
+These controls are intended to reduce credential exposure and preserve a clear authorization boundary around consequential operations.
 
-Before exposing the deployment as a public production service, authentication and authorization should be added.
+---
 
-Microsoft Entra ID is the planned authentication layer.
+## Current Networking Boundary
+
+The current Azure networking model is appropriate for the portfolio/lab deployment but is not presented as the final production network architecture.
+
+PostgreSQL access has already been restricted from the broad:
+
+```text
+Allow Azure services and resources to access this server
+```
+
+configuration to a specific Container Apps outbound address.
+
+The next production-hardening stage is:
+
+```text
+VNet-integrated Container Apps Environment
+        ↓
+Private Endpoints
+        ├── PostgreSQL
+        ├── Key Vault
+        └── Azure Container Registry
+        ↓
+Private DNS
+        ↓
+Stable outbound egress
+        ↓
+NAT Gateway
+```
+
+A safe migration requires a second Container Apps Environment so that the VNet-integrated environment can be validated before the existing environment is removed.
+
+The current lab subscription has a regional Container Apps managed-environment quota of one, so the existing working environment has intentionally been preserved rather than deleted to force the migration.
+
+---
+
+## Engineering Decisions
+
+### Human decisions remain authoritative
+
+Triage recommendations and approval decisions are stored separately.
+
+This maintains the distinction between:
+
+```text
+what the system suggested
+```
+
+and:
+
+```text
+what an authenticated human decided
+```
+
+### Application roles separate normal and consequential actions
+
+Normal property-management operations require:
+
+```text
+PropertyOps.User
+```
+
+while approval and rejection require:
+
+```text
+PropertyOps.Manager
+```
+
+### Separate managed identities
+
+Registry image retrieval and application secret retrieval use separate managed identities.
+
+### OIDC instead of CI/CD passwords
+
+GitHub Actions authenticates to Azure using workload identity federation rather than a long-lived Azure client secret.
+
+### Incremental IaC adoption
+
+Existing Azure resources were inspected and adopted into Bicep one service at a time instead of being recreated blindly.
+
+### Infrastructure changes are reviewed before deployment
+
+Bicep changes are validated using:
+
+```text
+az bicep build
+```
+
+and:
+
+```text
+az deployment group what-if
+```
+
+before applying changes to Azure.
 
 ---
 
@@ -707,27 +1072,27 @@ Microsoft Entra ID is the planned authentication layer.
 ### Data
 
 - SQLite for local development
-- Azure Database for PostgreSQL Flexible Server for cloud persistence
+- Azure Database for PostgreSQL Flexible Server for Azure persistence
 
-### Containers
+### Azure
+
+- Azure Container Apps
+- Azure Container Registry
+- Azure Database for PostgreSQL
+- Azure Key Vault
+- Microsoft Entra ID
+- Managed Identity
+- Azure RBAC
+- Application Insights
+- Log Analytics
+
+### DevOps and Platform
 
 - Docker
-- Azure Container Registry
-- Azure Container Apps
-
-### Identity and Security
-
-- Azure Managed Identity
-- Azure RBAC
-- Azure Key Vault
-- PostgreSQL firewall rules
-
-### Observability
-
-- OpenTelemetry
-- Azure Application Insights
-- Azure Log Analytics
-- KQL
+- GitHub Actions
+- GitHub OIDC
+- Azure CLI
+- Bicep
 
 ### Optional AI
 
@@ -739,38 +1104,79 @@ Microsoft Entra ID is the planned authentication layer.
 
 ## Skills Demonstrated
 
-- **Azure cloud engineering:** Container Apps, ACR, PostgreSQL, Key Vault, identity, RBAC, monitoring, and networking
-- **Platform engineering:** container delivery, runtime configuration, persistence, secret management, and operational controls
-- **DevOps:** Docker image lifecycle, deployment validation, testing, and immutable image versions
-- **Backend engineering:** FastAPI, SQLAlchemy, REST APIs, database transactions, and failure handling
-- **Observability:** OpenTelemetry, Application Insights, Log Analytics, KQL, latency analysis, and failure investigation
-- **Security:** managed identities, least-privilege RBAC, external secret storage, non-root containers, and restricted database access
-- **Responsible automation:** human approval boundaries, explicit AI opt-in, audit records, and non-mutating recommendations
+This project demonstrates practical experience with:
+
+- Azure cloud engineering
+- Infrastructure as Code
+- Bicep
+- Identity and access management
+- Microsoft Entra ID
+- Application roles
+- Azure RBAC
+- Managed Identity
+- Azure Key Vault
+- CI/CD
+- Workload identity federation
+- Docker
+- Container deployment
+- PostgreSQL administration
+- FastAPI backend engineering
+- REST API design
+- SQLAlchemy
+- Application observability
+- Azure Monitor
+- Application Insights
+- Log Analytics
+- KQL
+- Failure handling
+- Human-in-the-loop AI workflow design
+- Safe cloud migration practices
 
 ---
 
-## Planned Improvements
+## Roadmap
+
+Potential future improvements include:
+
+- Complete VNet-integrated Container Apps migration
+- PostgreSQL Private Endpoint
+- Key Vault Private Endpoint
+- Azure Container Registry Private Endpoint
+- Private DNS zones
+- NAT Gateway for stable outbound IP
+- Additional authentication and authorization tests
+- Automated Bicep validation in CI
+- Deployment environments and approval gates
+- Custom domain and managed certificate
+- Additional operational dashboards and alerts
+
+---
+
+## Project Status
+
+PropertyOps is a portfolio engineering project and not a commercial property-management service.
+
+The current deployment demonstrates a working end-to-end Azure platform with:
 
 ```text
-Microsoft Entra ID authentication
-        ↓
-Role-based application access
-        ↓
-GitHub Actions CI/CD with Azure OIDC
-        ↓
-Infrastructure as Code with Bicep
-        ↓
-Private Azure networking
-        ↓
-Stable outbound networking
+Application
++ Database
++ Authentication
++ Authorization
++ Managed Identity
++ Key Vault
++ Azure RBAC
++ Monitoring
++ CI/CD
++ OIDC
++ Infrastructure as Code
 ```
 
----
+The focus of the project is not simply that the application runs.
+
+The goal is to demonstrate how an application can be designed, deployed, secured, observed, automated, and progressively managed through repeatable cloud engineering practices.
 
 ## Author
-
 **Olawale Azeez**
-
 AWS Certified Developer – Associate
-
 Cloud Engineer | Platform Engineer | DevOps Engineer
