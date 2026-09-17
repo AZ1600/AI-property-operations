@@ -78,14 +78,24 @@ module monitoring './modules/monitoring.bicep' = {
 
 
 // ---------------------------------------------------------
+// Container Apps Environment
+// ---------------------------------------------------------
+
+module containerEnvironment './modules/container-environment.bicep' = {
+  name: 'propertyops-container-environment'
+
+  params: {
+    location: location
+    containerEnvironmentName: containerEnvironmentName
+  }
+}
+
+
+// ---------------------------------------------------------
 // Existing infrastructure
 //
 // These remain references only for now.
 // ---------------------------------------------------------
-
-resource containerEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
-  name: containerEnvironmentName
-}
 
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' existing = {
   name: containerAppName
@@ -104,7 +114,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
 
 output containerAppId string = containerApp.id
 
-output containerEnvironmentId string = containerEnvironment.id
+output containerEnvironmentId string = containerEnvironment.outputs.containerEnvironmentId
 
 
 // ACR
