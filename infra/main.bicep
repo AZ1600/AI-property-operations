@@ -47,6 +47,9 @@ param containerImage string
 @description('Triage operating mode')
 param triageMode string = 'rules'
 
+@description('Object ID of the GitHub Actions OIDC service principal')
+param githubActionsPrincipalId string
+
 @secure()
 @description('Existing Application Insights connection string Container App secret')
 param appInsightsConnectionStringSecret string
@@ -153,7 +156,6 @@ module containerApp './modules/container-app.bicep' = {
 
   params: {
     location: location
-
     containerAppName: containerAppName
 
     environmentId: containerEnvironment.outputs.containerEnvironmentId
@@ -172,6 +174,32 @@ module containerApp './modules/container-app.bicep' = {
 
     microsoftProviderAuthenticationSecret: microsoftProviderAuthenticationSecret
   }
+}
+
+
+// ---------------------------------------------------------
+// RBAC
+// ---------------------------------------------------------
+
+module rbac './modules/rbac.bicep' = {
+  name: 'propertyops-rbac'
+
+  params: {
+    acrName: acrName
+    keyVaultName: keyVaultName
+    containerAppName: containerAppName
+
+    acrPullPrincipalId: identities.outputs.acrPullPrincipalId
+    runtimePrincipalId: identities.outputs.runtimePrincipalId
+
+    githubActionsPrincipalId: githubActionsPrincipalId
+  }
+
+  dependsOn: [
+    acr
+    keyVault
+    containerApp
+  ]
 }
 
 
@@ -232,3 +260,14 @@ output postgresServerId string = postgres.outputs.postgresServerId
 output postgresFqdn string = postgres.outputs.fqdn
 
 output postgresDatabaseName string = postgres.outputs.databaseName
+
+
+// RBAC
+
+output acrPullRoleAssignmentId string = rbac.outputs.acrPullRoleAssignmentId
+
+output keyVaultSecretsUserRoleAssignmentId string = rbac.outputs.keyVaultSecretsUserRoleAssignmentId
+
+output acrPushRoleAssignmentId string = rbac.outputs.acrPushRoleAssignmentId
+
+output containerAppsContributorRoleAssignmentId string = rbac.outputs.containerAppsContributorRoleAssignmentId
