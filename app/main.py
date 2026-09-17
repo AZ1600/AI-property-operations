@@ -12,6 +12,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.auth import get_current_user, require_role
 from app.database import Base, SessionLocal, engine
 
 
@@ -48,6 +49,16 @@ def health_check():
     }
 
 
+@app.get("/me")
+def get_me(
+    user=Depends(get_current_user),
+):
+    return {
+        "actor": user["actor"],
+        "roles": list(user["roles"]),
+    }
+
+
 @app.get("/triage-config")
 def get_triage_config():
     """Report the selected mode without revealing credentials or calling OpenAI."""
@@ -56,8 +67,13 @@ def get_triage_config():
     try:
         mode = triage_mode()
     except TriageUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from None
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from None
+
     key, model = settings()
+
     return {
         "mode": mode,
         "model": model if mode == "openai" else None,
@@ -67,6 +83,10 @@ def get_triage_config():
     }
 
 
+# -------------------------------------------------------------------
+# PROPERTIES
+# -------------------------------------------------------------------
+
 @app.post(
     "/properties",
     response_model=schemas.PropertyResponse,
@@ -74,6 +94,7 @@ def get_triage_config():
 def create_property(
     property_data: schemas.PropertyCreate,
     db: Session = Depends(get_db),
+    user=Depends(require_role("PropertyOps.User")),
 ):
     property_record = models.Property(
         name=property_data.name,
@@ -94,6 +115,7 @@ def create_property(
 )
 def get_properties(
     db: Session = Depends(get_db),
+    user=Depends(require_role("PropertyOps.User")),
 ):
     return db.query(models.Property).all()
 
@@ -105,6 +127,7 @@ def get_properties(
 def get_property(
     property_id: int,
     db: Session = Depends(get_db),
+    user=Depends(require_role("PropertyOps.User")),
 ):
     property_record = (
         db.query(models.Property)
@@ -121,6 +144,10 @@ def get_property(
     return property_record
 
 
+# -------------------------------------------------------------------
+# MAINTENANCE
+# -------------------------------------------------------------------
+
 @app.post(
     "/maintenance",
     response_model=schemas.MaintenanceRequestResponse,
@@ -128,12 +155,12 @@ def get_property(
 def create_maintenance_request(
     maintenance_data: schemas.MaintenanceRequestCreate,
     db: Session = Depends(get_db),
+    user=Depends(require_role("PropertyOps.User")),
 ):
     property_record = (
         db.query(models.Property)
         .filter(
-            models.Property.id
-            == maintenance_data.property_id
+            models.Property.id == maintenance_data.property_id
         )
         .first()
     )
@@ -157,14 +184,21 @@ def create_maintenance_request(
 
     return maintenance_record
 
+
 @app.get(
     "/maintenance",
     response_model=list[schemas.MaintenanceRequestResponse],
 )
 def get_maintenance_requests(
     db: Session = Depends(get_db),
+    user=Depends(require_role("PropertyOps.User")),
 ):
     return db.query(models.MaintenanceRequest).all()
+
+
+# -------------------------------------------------------------------
+# APPROVALS
+# -------------------------------------------------------------------
 
 @app.post(
     "/approvals",
@@ -173,6 +207,7 @@ def get_maintenance_requests(
 def create_approval_request(
     approval_data: schemas.ApprovalRequestCreate,
     db: Session = Depends(get_db),
+    user=Depends(require_role("PropertyOps.User")),
 ):
     maintenance_record = (
         db.query(models.MaintenanceRequest)
@@ -229,6 +264,7 @@ def create_approval_request(
 )
 def get_approvals(
     db: Session = Depends(get_db),
+    user=Depends(require_role("PropertyOps.User")),
 ):
     return db.query(models.ApprovalRequest).all()
 
@@ -240,6 +276,7 @@ def get_approvals(
 def approve_request(
     approval_id: int,
     db: Session = Depends(get_db),
+    user=Depends(require_role("PropertyOps.Manager")),
 ):
     approval_record = (
         db.query(models.ApprovalRequest)
@@ -281,13 +318,14 @@ def approve_request(
 
     approval_record.status = "approved"
     maintenance_record.status = "approved"
+
     audit_record = models.AuditLog(
         action="approval_decision",
         resource_type="approval",
         resource_id=approval_record.id,
         old_status="pending",
         new_status="approved",
-        actor="human",
+        actor=user["actor"],
     )
 
     db.add(audit_record)
@@ -306,6 +344,7 @@ def approve_request(
 def reject_request(
     approval_id: int,
     db: Session = Depends(get_db),
+    user=Depends(require_role("PropertyOps.Manager")),
 ):
     approval_record = (
         db.query(models.ApprovalRequest)
@@ -354,7 +393,7 @@ def reject_request(
         resource_id=approval_record.id,
         old_status="pending",
         new_status="rejected",
-        actor="human",
+        actor=user["actor"],
     )
 
     db.add(audit_record)
@@ -365,41 +404,93 @@ def reject_request(
 
     return approval_record
 
+
+# -------------------------------------------------------------------
+# AUDIT
+# -------------------------------------------------------------------
+
 @app.get(
     "/audit-logs",
     response_model=list[schemas.AuditLogResponse],
 )
 def get_audit_logs(
     db: Session = Depends(get_db),
+    user=Depends(require_role("PropertyOps.User")),
 ):
     return db.query(models.AuditLog).all()
 
-@app.post("/maintenance/{maintenance_id}/triage", response_model=schemas.TriageSuggestionResponse)
-def triage_maintenance(maintenance_id: int, db: Session = Depends(get_db)):
+
+# -------------------------------------------------------------------
+# AI TRIAGE
+# -------------------------------------------------------------------
+
+@app.post(
+    "/maintenance/{maintenance_id}/triage",
+    response_model=schemas.TriageSuggestionResponse,
+)
+def triage_maintenance(
+    maintenance_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_role("PropertyOps.User")),
+):
     from app.triage import suggest_triage
     from app.ai_triage import TriageUnavailable
 
-    maintenance = db.get(models.MaintenanceRequest, maintenance_id)
+    maintenance = db.get(
+        models.MaintenanceRequest,
+        maintenance_id,
+    )
+
     if maintenance is None:
-        raise HTTPException(status_code=404, detail="Maintenance request not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Maintenance request not found",
+        )
+
     try:
         result = suggest_triage(maintenance.issue)
     except TriageUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from None
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from None
+
     suggestion = models.TriageSuggestion(
         maintenance_request_id=maintenance.id,
         **result,
     )
+
     db.add(suggestion)
     db.commit()
     db.refresh(suggestion)
+
     return suggestion
 
 
-@app.get("/maintenance/{maintenance_id}/triage", response_model=list[schemas.TriageSuggestionResponse])
-def get_triage_suggestions(maintenance_id: int, db: Session = Depends(get_db)):
-    if db.get(models.MaintenanceRequest, maintenance_id) is None:
-        raise HTTPException(status_code=404, detail="Maintenance request not found")
-    return (db.query(models.TriageSuggestion)
-            .filter(models.TriageSuggestion.maintenance_request_id == maintenance_id)
-            .order_by(models.TriageSuggestion.id).all())
+@app.get(
+    "/maintenance/{maintenance_id}/triage",
+    response_model=list[schemas.TriageSuggestionResponse],
+)
+def get_triage_suggestions(
+    maintenance_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_role("PropertyOps.User")),
+):
+    if db.get(
+        models.MaintenanceRequest,
+        maintenance_id,
+    ) is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Maintenance request not found",
+        )
+
+    return (
+        db.query(models.TriageSuggestion)
+        .filter(
+            models.TriageSuggestion.maintenance_request_id
+            == maintenance_id
+        )
+        .order_by(models.TriageSuggestion.id)
+        .all()
+    )
