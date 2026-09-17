@@ -32,6 +32,15 @@ param logAnalyticsName string = 'law-propertyops-dev'
 @description('Application Insights name')
 param appInsightsName string = 'appi-propertyops-dev'
 
+@description('PostgreSQL Flexible Server name')
+param postgresServerName string = 'az1600-propertyops-pg-31328'
+
+@description('PropertyOps PostgreSQL database name')
+param postgresDatabaseName string = 'propertyops'
+
+@description('Current Container App outbound IP allowed through PostgreSQL firewall')
+param containerAppOutboundIp string = '74.177.140.229'
+
 
 // ---------------------------------------------------------
 // Managed identities
@@ -92,16 +101,6 @@ module containerEnvironment './modules/container-environment.bicep' = {
 
 
 // ---------------------------------------------------------
-// Existing infrastructure
-//
-// These remain references only for now.
-// ---------------------------------------------------------
-
-resource containerApp 'Microsoft.App/containerApps@2024-03-01' existing = {
-  name: containerAppName
-}
-
-// ---------------------------------------------------------
 // Key Vault
 // ---------------------------------------------------------
 
@@ -114,18 +113,51 @@ module keyVault './modules/key-vault.bicep' = {
   }
 }
 
+
+// ---------------------------------------------------------
+// PostgreSQL Flexible Server
+// ---------------------------------------------------------
+
+module postgres './modules/postgres.bicep' = {
+  name: 'propertyops-postgres'
+
+  params: {
+    location: location
+    postgresServerName: postgresServerName
+    databaseName: postgresDatabaseName
+    containerAppOutboundIp: containerAppOutboundIp
+  }
+}
+
+
+// ---------------------------------------------------------
+// Existing infrastructure
+//
+// Container App remains reference-only for now.
+// We will bring it under Bicep management in a later slice.
+// ---------------------------------------------------------
+
+resource containerApp 'Microsoft.App/containerApps@2024-03-01' existing = {
+  name: containerAppName
+}
+
+
 // ---------------------------------------------------------
 // Outputs
 // ---------------------------------------------------------
 
-// Container Apps
+
+// Container App
 
 output containerAppId string = containerApp.id
+
+
+// Container Apps Environment
 
 output containerEnvironmentId string = containerEnvironment.outputs.containerEnvironmentId
 
 
-// ACR
+// Azure Container Registry
 
 output acrId string = acr.outputs.acrId
 
@@ -144,7 +176,10 @@ output runtimePrincipalId string = identities.outputs.runtimePrincipalId
 
 
 // Key Vault
+
 output keyVaultId string = keyVault.outputs.keyVaultId
+
+output keyVaultUri string = keyVault.outputs.keyVaultUri
 
 
 // Monitoring
@@ -152,3 +187,12 @@ output keyVaultId string = keyVault.outputs.keyVaultId
 output logAnalyticsId string = monitoring.outputs.logAnalyticsId
 
 output appInsightsId string = monitoring.outputs.appInsightsId
+
+
+// PostgreSQL
+
+output postgresServerId string = postgres.outputs.postgresServerId
+
+output postgresFqdn string = postgres.outputs.fqdn
+
+output postgresDatabaseName string = postgres.outputs.databaseName
