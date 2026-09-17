@@ -101,10 +101,18 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' existing = {
   name: containerAppName
 }
 
-resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
-  name: keyVaultName
-}
+// ---------------------------------------------------------
+// Key Vault
+// ---------------------------------------------------------
 
+module keyVault './modules/key-vault.bicep' = {
+  name: 'propertyops-key-vault'
+
+  params: {
+    location: location
+    keyVaultName: keyVaultName
+  }
+}
 
 // ---------------------------------------------------------
 // Outputs
@@ -136,8 +144,7 @@ output runtimePrincipalId string = identities.outputs.runtimePrincipalId
 
 
 // Key Vault
-
-output keyVaultId string = keyVault.id
+output keyVaultId string = keyVault.outputs.keyVaultId
 
 
 // Monitoring
