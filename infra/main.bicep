@@ -41,6 +41,20 @@ param postgresDatabaseName string = 'propertyops'
 @description('Current Container App outbound IP allowed through PostgreSQL firewall')
 param containerAppOutboundIp string = '74.177.140.229'
 
+@description('Container image currently deployed by CI/CD')
+param containerImage string
+
+@description('Triage operating mode')
+param triageMode string = 'rules'
+
+@secure()
+@description('Existing Application Insights connection string Container App secret')
+param appInsightsConnectionStringSecret string
+
+@secure()
+@description('Existing Microsoft authentication provider secret')
+param microsoftProviderAuthenticationSecret string
+
 
 // ---------------------------------------------------------
 // Managed identities
@@ -115,7 +129,7 @@ module keyVault './modules/key-vault.bicep' = {
 
 
 // ---------------------------------------------------------
-// PostgreSQL Flexible Server
+// PostgreSQL
 // ---------------------------------------------------------
 
 module postgres './modules/postgres.bicep' = {
@@ -131,14 +145,33 @@ module postgres './modules/postgres.bicep' = {
 
 
 // ---------------------------------------------------------
-// Existing infrastructure
-//
-// Container App remains reference-only for now.
-// We will bring it under Bicep management in a later slice.
+// Container App
 // ---------------------------------------------------------
 
-resource containerApp 'Microsoft.App/containerApps@2024-03-01' existing = {
-  name: containerAppName
+module containerApp './modules/container-app.bicep' = {
+  name: 'propertyops-container-app'
+
+  params: {
+    location: location
+
+    containerAppName: containerAppName
+
+    environmentId: containerEnvironment.outputs.containerEnvironmentId
+
+    acrLoginServer: '${acrName}${environment().suffixes.acrLoginServer}'
+
+    acrPullIdentityId: identities.outputs.acrPullIdentityId
+    runtimeIdentityId: identities.outputs.runtimeIdentityId
+
+    keyVaultUri: 'https://${keyVaultName}${environment().suffixes.keyvaultDns}/'
+
+    containerImage: containerImage
+    triageMode: triageMode
+
+    appInsightsConnectionStringSecret: appInsightsConnectionStringSecret
+
+    microsoftProviderAuthenticationSecret: microsoftProviderAuthenticationSecret
+  }
 }
 
 
@@ -146,10 +179,13 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' existing = {
 // Outputs
 // ---------------------------------------------------------
 
-
 // Container App
 
-output containerAppId string = containerApp.id
+output containerAppId string = containerApp.outputs.containerAppId
+
+output containerAppFqdn string = containerApp.outputs.containerAppFqdn
+
+output authConfigId string = containerApp.outputs.authConfigId
 
 
 // Container Apps Environment
