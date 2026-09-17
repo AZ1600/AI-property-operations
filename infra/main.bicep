@@ -63,10 +63,24 @@ module acr './modules/acr.bicep' = {
 
 
 // ---------------------------------------------------------
+// Monitoring
+// ---------------------------------------------------------
+
+module monitoring './modules/monitoring.bicep' = {
+  name: 'propertyops-monitoring'
+
+  params: {
+    location: location
+    logAnalyticsName: logAnalyticsName
+    appInsightsName: appInsightsName
+  }
+}
+
+
+// ---------------------------------------------------------
 // Existing infrastructure
 //
-// These resources are referenced only for now.
-// We will move them under Bicep gradually.
+// These remain references only for now.
 // ---------------------------------------------------------
 
 resource containerEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
@@ -81,18 +95,12 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
 }
 
-resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' existing = {
-  name: logAnalyticsName
-}
-
-resource appInsights 'Microsoft.Insights/components@2020-02-02' existing = {
-  name: appInsightsName
-}
-
 
 // ---------------------------------------------------------
 // Outputs
 // ---------------------------------------------------------
+
+// Container Apps
 
 output containerAppId string = containerApp.id
 
@@ -124,6 +132,6 @@ output keyVaultId string = keyVault.id
 
 // Monitoring
 
-output logAnalyticsId string = logAnalytics.id
+output logAnalyticsId string = monitoring.outputs.logAnalyticsId
 
-output appInsightsId string = appInsights.id
+output appInsightsId string = monitoring.outputs.appInsightsId
