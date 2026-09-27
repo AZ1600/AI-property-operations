@@ -102,6 +102,41 @@ module monitoring './modules/monitoring.bicep' = {
   }
 }
 
+// ---------------------------------------------------------
+// PropertyOps network foundation
+//
+// The current Container Apps Environment cannot be migrated
+// in place from the default Azure network to a custom VNet.
+// This network is provisioned independently and reserved for
+// a future replacement environment and private endpoints.
+// ---------------------------------------------------------
+
+module network './modules/network.bicep' = {
+  name: 'propertyops-network'
+
+  params: {
+    location: location
+    vnetName: 'vnet-propertyops-dev'
+    vnetAddressPrefix: '10.30.0.0/16'
+    containerAppsSubnetName: 'snet-containerapps'
+    containerAppsSubnetPrefix: '10.30.0.0/24'
+    privateEndpointSubnetName: 'snet-private-endpoints'
+    privateEndpointSubnetPrefix: '10.30.1.0/24'
+  }
+}
+
+// ---------------------------------------------------------
+// Private DNS foundation
+// ---------------------------------------------------------
+
+module privateDns './modules/private-dns.bicep' = {
+  name: 'propertyops-private-dns'
+
+  params: {
+    vnetId: network.outputs.vnetId
+    environment: 'dev'
+  }
+}
 
 // ---------------------------------------------------------
 // Container Apps Environment
@@ -130,6 +165,21 @@ module keyVault './modules/key-vault.bicep' = {
   }
 }
 
+// ---------------------------------------------------------
+// Key Vault Private Endpoint
+// ---------------------------------------------------------
+
+module keyVaultPrivateEndpoint './modules/key-vault-private-endpoint.bicep' = {
+  name: 'propertyops-keyvault-private-endpoint'
+
+  params: {
+    location: location
+    keyVaultId: keyVault.outputs.keyVaultId
+    privateEndpointSubnetId: network.outputs.privateEndpointSubnetId
+    keyVaultPrivateDnsZoneId: privateDns.outputs.keyVaultPrivateDnsZoneId
+    environment: 'dev'
+  }
+}
 
 // ---------------------------------------------------------
 // PostgreSQL
@@ -146,6 +196,21 @@ module postgres './modules/postgres.bicep' = {
   }
 }
 
+// ---------------------------------------------------------
+// PostgreSQL Private Endpoint
+// ---------------------------------------------------------
+
+module postgresPrivateEndpoint './modules/postgres-private-endpoint.bicep' = {
+  name: 'propertyops-postgres-private-endpoint'
+
+  params: {
+    location: location
+    postgresServerId: postgres.outputs.postgresServerId
+    privateEndpointSubnetId: network.outputs.privateEndpointSubnetId
+    postgresPrivateDnsZoneId: privateDns.outputs.postgresPrivateDnsZoneId
+    environment: 'dev'
+  }
+}
 
 // ---------------------------------------------------------
 // Container App
@@ -271,3 +336,19 @@ output keyVaultSecretsUserRoleAssignmentId string = rbac.outputs.keyVaultSecrets
 output acrPushRoleAssignmentId string = rbac.outputs.acrPushRoleAssignmentId
 
 output containerAppsContributorRoleAssignmentId string = rbac.outputs.containerAppsContributorRoleAssignmentId
+
+output propertyOpsVnetId string = network.outputs.vnetId
+
+output propertyOpsVnetName string = network.outputs.vnetName
+
+output containerAppsSubnetId string = network.outputs.containerAppsSubnetId
+
+output privateEndpointSubnetId string = network.outputs.privateEndpointSubnetId
+
+output postgresPrivateEndpointId string = postgresPrivateEndpoint.outputs.privateEndpointId
+
+output postgresPrivateEndpointName string = postgresPrivateEndpoint.outputs.privateEndpointName
+
+output keyVaultPrivateEndpointId string = keyVaultPrivateEndpoint.outputs.privateEndpointId
+
+output keyVaultPrivateEndpointName string = keyVaultPrivateEndpoint.outputs.privateEndpointName
