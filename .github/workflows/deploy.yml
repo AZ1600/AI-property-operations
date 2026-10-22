@@ -13,7 +13,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 env:
   RESOURCE_GROUP: rg-az104-arm-lab
@@ -24,6 +23,7 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -40,12 +40,39 @@ jobs:
           pip install pytest pytest-subtests
 
       - name: Run tests
-        run: python -m pytest -q
+        run: python -m pytest -q --junitxml=test-results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-test-results
+          path: test-results.xml
+          if-no-files-found: ignore
+
+  validate-infrastructure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BICEP_CLI_VERSION: v0.47.16
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pinned Bicep CLI
+        run: az bicep install --version "$BICEP_CLI_VERSION"
+
+      - name: Compile all Bicep templates
+        run: bash scripts/validate-infra.sh
 
   deploy:
-    if: github.event_name != 'pull_request'
-    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [test, validate-infrastructure]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout repository
