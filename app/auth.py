@@ -18,10 +18,30 @@ def get_current_user(
 
     try:
         decoded = base64.b64decode(
-            x_ms_client_principal
+            x_ms_client_principal,
+            validate=True,
         ).decode("utf-8")
 
         principal = json.loads(decoded)
+
+        if not isinstance(principal, dict):
+            raise ValueError("Principal must be an object")
+
+        claims = principal.get("claims", [])
+        if not isinstance(claims, list):
+            raise ValueError("Claims must be a list")
+
+        for claim in claims:
+            if (
+                not isinstance(claim, dict)
+                or not isinstance(claim.get("typ"), str)
+                or not isinstance(claim.get("val"), str)
+            ):
+                raise ValueError("Claims must have string types and values")
+
+        name = principal.get("name")
+        if name is not None and not isinstance(name, str):
+            raise ValueError("Principal name must be a string")
 
     except (
         ValueError,
@@ -32,8 +52,6 @@ def get_current_user(
             status_code=401,
             detail="Invalid authentication information",
         )
-
-    claims = principal.get("claims", [])
 
     roles = {
         claim.get("val")

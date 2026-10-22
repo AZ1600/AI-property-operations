@@ -786,11 +786,9 @@ Existing assignment resource IDs were preserved during IaC adoption to prevent d
 ```text
 Checkout
    ↓
-Python 3.11
+Python tests + Bicep compilation (parallel jobs)
    ↓
-Install dependencies
-   ↓
-pytest
+Both checks must pass
 ```
 
 Deployment does not run for pull-request events.
@@ -798,7 +796,9 @@ Deployment does not run for pull-request events.
 ## Main branch
 
 ```text
-Tests
+Python tests + Bicep compilation
+  ↓
+Both checks pass
   ↓
 GitHub OIDC
   ↓
@@ -813,7 +813,11 @@ Push commit-SHA image
 Deploy to Azure Container Apps
 ```
 
-Azure authentication uses workload identity federation rather than a long-lived client secret.
+Azure authentication uses workload identity federation rather than a long-lived client secret. Only the deployment job can request an OIDC token. Deployment runs only for non-PR events on `main` and requires both validation jobs to pass.
+
+The infrastructure job compiles all 13 Bicep templates with pinned Bicep CLI `v0.47.16`. It requires no Azure login and does not create cloud resources. Compilation checks syntax, types and module wiring; it does not check regional quota, live access policies or deployment success.
+
+Python test results are uploaded as a JUnit artifact, including when tests fail. See [Validation and test boundaries](docs/validation.md) for what the suite proves and how to run the checks locally.
 
 Container images are tagged using the Git commit SHA.
 
@@ -904,8 +908,8 @@ Before deployment, each infrastructure slice was also reviewed using Azure What-
 Application validation produced:
 
 ```text
-11 passed
-20 subtests passed
+79 passed
+14 subtests passed
 ```
 
 The remaining test output consists of dependency deprecation warnings rather than application test failures.
@@ -1105,13 +1109,20 @@ The test suite covers:
 - maintenance workflows
 - approval behaviour
 - audit behaviour
+- missing and malformed identity rejection across protected APIs
+- user-versus-manager role boundaries using the real auth dependency
+- trusted audit actors and denied decision attempts without data changes
+- repeated decision conflicts and database rollback if an audit insert fails
+- structured AI responses, safe provider errors and advisory-only state changes
 - failure handling
+
+Pytest collection forces an in-memory SQLite database and disables telemetry. An automatic fixture blocks unmocked AI clients. Tests do not use your configured cloud database or call an AI service. Authentication fixtures model Azure's trusted principal header; they do not validate real Entra tokens. The suite does not establish PostgreSQL concurrency behavior or live Azure authentication configuration.
 
 Current validation:
 
 ```text
-11 passed
-20 subtests passed
+79 passed
+14 subtests passed
 ```
 
 ---
@@ -1443,7 +1454,6 @@ Next improvements:
 [Next] Disable unnecessary Key Vault public access
 [Next] Add NAT Gateway for stable outbound egress
 [Future] Evaluate ACR Premium + Private Link
-[Future] Add automated Bicep validation to CI
 [Future] Add additional operational alerts
 [Future] Add deployment approval environments
 [Future] Add custom domain and managed certificate
