@@ -600,7 +600,9 @@ Approval and rejection require:
 PropertyOps.Manager
 ```
 
-Duplicate pending approval requests and repeated decisions return HTTP `409`.
+Duplicate pending approval requests, attempts to reopen already decided maintenance,
+and repeated decisions return HTTP `409`. A finalized maintenance decision
+remains terminal; new approval requests cannot reverse it.
 
 This preserves a clear human decision boundary even when AI-assisted triage is enabled.
 

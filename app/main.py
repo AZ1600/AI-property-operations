@@ -224,6 +224,13 @@ def create_approval_request(
             detail="Maintenance request not found",
         )
 
+    # A completed maintenance decision must never be reopened or reversed.
+    if maintenance_record.status != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail="Maintenance request has already been decided",
+        )
+
     existing_approval = (
         db.query(models.ApprovalRequest)
         .filter(
@@ -316,6 +323,13 @@ def approve_request(
             detail="Maintenance request not found",
         )
 
+    # A completed maintenance decision must never be reopened or reversed.
+    if maintenance_record.status != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail="Maintenance request has already been decided",
+        )
+
     approval_record.status = "approved"
     maintenance_record.status = "approved"
 
@@ -382,6 +396,13 @@ def reject_request(
         raise HTTPException(
             status_code=404,
             detail="Maintenance request not found",
+        )
+
+    # A completed maintenance decision must never be reopened or reversed.
+    if maintenance_record.status != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail="Maintenance request has already been decided",
         )
 
     approval_record.status = "rejected"

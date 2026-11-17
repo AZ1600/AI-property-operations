@@ -228,6 +228,47 @@ def test_duplicate_pending_approval_does_not_create_second_record(workspace):
         assert db.query(models.ApprovalRequest).count() == 1
 
 
+@pytest.mark.parametrize("decision,status", [("approve", "approved"), ("reject", "rejected")])
+def test_decided_maintenance_cannot_be_reopened(workspace, decision, status):
+    client, engine, ids = workspace
+    decision_response = client.post(
+        f"/approvals/{ids['approval']}/{decision}",
+        headers=identity("PropertyOps.Manager"),
+    )
+    assert decision_response.status_code == 200
+
+    new_approval = client.post(
+        "/approvals",
+        headers=identity("PropertyOps.User"),
+        json={"maintenance_request_id": ids["maintenance"], "reason": "Reopen decision"},
+    )
+    assert new_approval.status_code == 409
+    with Session(engine) as db:
+        assert db.query(models.ApprovalRequest).count() == 1
+        assert db.get(models.ApprovalRequest, ids["approval"]).status == status
+        assert db.get(models.MaintenanceRequest, ids["maintenance"]).status == status
+        assert db.query(models.AuditLog).count() == 1
+
+
+@pytest.mark.parametrize("decision", ["approve", "reject"])
+def test_stale_pending_approval_cannot_override_final_maintenance(workspace, decision):
+    client, engine, ids = workspace
+    with Session(engine) as db:
+        maintenance = db.get(models.MaintenanceRequest, ids["maintenance"])
+        maintenance.status = "rejected"
+        db.commit()
+
+    response = client.post(
+        f"/approvals/{ids['approval']}/{decision}",
+        headers=identity("PropertyOps.Manager"),
+    )
+    assert response.status_code == 409
+    with Session(engine) as db:
+        assert db.get(models.MaintenanceRequest, ids["maintenance"]).status == "rejected"
+        assert db.get(models.ApprovalRequest, ids["approval"]).status == "pending"
+        assert db.query(models.AuditLog).count() == 0
+
+
 @pytest.mark.parametrize("decision", ["approve", "reject"])
 def test_unknown_approval_is_404_without_side_effects(workspace, decision):
     client, engine, _ = workspace
