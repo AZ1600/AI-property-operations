@@ -42,7 +42,9 @@ Python 3.11 and pytest 9.1.1. Existing dependency deprecation warnings remain.
 - Manager approvals and rejections update both related statuses and record the
   actor from the authenticated principal, ignoring a forged body actor.
 - Repeated or conflicting sequential decisions return 409 without extra audit
-  records. Duplicate pending approval requests return 409.
+  records. Duplicate pending approval requests return 409. Completed maintenance
+  cannot be reopened with a fresh approval, and stale pending approvals cannot
+  change a finalized maintenance status or create a new audit entry.
 - A database trigger deliberately rejects an audit insert. The request fails,
   neither status changes, and a retry succeeds after removing the trigger.
 - Rules and stubbed AI suggestions create advice without deciding the associated
